@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { supabase } from '../supabaseClient';
+import { supabase, isSupabaseConfigured } from '../supabaseClient';
 import { Loader2, Eye, EyeOff, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { DualText } from './DualText';
 
@@ -44,6 +44,10 @@ export default function Auth() {
     setMessage(null);
 
     try {
+      if (!isSupabaseConfigured) {
+        throw new Error('Supabase configuration is missing. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.');
+      }
+
       const trimmedEmail = email.trim();
       // Create a timeout promise that rejects after 15 seconds
       const timeoutMs = 15000;
@@ -105,7 +109,12 @@ export default function Auth() {
       console.error('Auth error:', err);
       let errorMessage = err.message || 'An error occurred during authentication.';
       
-      if (errorMessage.includes('Invalid login credentials')) {
+      if (err instanceof TypeError && err.message === 'Failed to fetch') {
+        errorMessage = JSON.stringify({ 
+          ar: 'فشل الاتصال بخادم قاعدة البيانات. يرجى التحقق من اتصال الإنترنت الخاص بك أو المحاولة لاحقاً.', 
+          en: 'Failed to connect to the database server. Please check your internet connection or try again later.' 
+        });
+      } else if (errorMessage.includes('Invalid login credentials')) {
         errorMessage = JSON.stringify({ ar: 'البريد الإلكتروني أو كلمة المرور غير صحيحة. يرجى التأكد من البيانات أو إنشاء حساب جديد.', en: 'Invalid email or password. Please check your credentials or create a new account.' });
       } else if (errorMessage.toLowerCase().includes('rate limit')) {
         errorMessage = JSON.stringify({ ar: 'تم تجاوز عدد المحاولات المسموح به! يرجى الانتظار حوالي 60 ثانية قبل المحاولة مرة أخرى.', en: 'Too many requests! Please wait about 60 seconds before trying again.' });
@@ -175,6 +184,17 @@ export default function Auth() {
                 </div>
               ) : (
                 <>
+                  {!isSupabaseConfigured && (
+                    <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-2xl text-red-400 flex items-start gap-3">
+                      <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
+                      <div className="text-sm font-medium">
+                        <DualText 
+                          ar="تنبيه: إعدادات Supabase مفقودة. يرجى ضبط VITE_SUPABASE_URL و VITE_SUPABASE_ANON_KEY في إعدادات المشروع." 
+                          en="Warning: Supabase configuration is missing. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in project settings." 
+                        />
+                      </div>
+                    </div>
+                  )}
                   <form action="#" className="space-y-6" onSubmit={handleAuth}>
                     {isSignUp && (
                       <div>

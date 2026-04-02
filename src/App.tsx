@@ -1,9 +1,9 @@
 import { useState, useRef, useEffect } from 'react';
 import { GoogleGenAI } from '@google/genai';
-import { Upload, Image as ImageIcon, Loader2, Sparkles, X, Globe, Video, Camera, StopCircle, FileText, LogOut, Download, Zap, LayoutGrid, ShoppingCart, ShieldCheck, Tag, Mail } from 'lucide-react';
+import { Upload, Image as ImageIcon, Loader2, Sparkles, X, Globe, Video, Camera, StopCircle, FileText, LogOut, Download, Zap, LayoutGrid, ShoppingCart, ShieldCheck, Tag, Mail, AlertTriangle } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { supabase } from './supabaseClient';
+import { supabase, isSupabaseConfigured } from './supabaseClient';
 import Auth from './components/Auth';
 import { DualText } from './components/DualText';
 
@@ -190,15 +190,55 @@ export default function App() {
   }, [stream]);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
+    if (!isSupabaseConfigured) {
       setIsAuthLoading(false);
-    });
+      return;
+    }
+    
+    const initializeAuth = async () => {
+      try {
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        
+        if (sessionError) {
+          console.error("Session initialization error:", sessionError);
+          // If refresh token is invalid, clear it and force re-login
+          if (sessionError.message.includes('Refresh Token Not Found') || sessionError.message.includes('Invalid Refresh Token')) {
+            await supabase.auth.signOut();
+            setSession(null);
+          }
+        } else {
+          setSession(session);
+        }
+      } catch (err) {
+        console.error("Failed to initialize auth:", err);
+        // If it's a fetch error, we might be offline or Supabase is down
+        if (err instanceof TypeError && err.message === 'Failed to fetch') {
+          setError({
+            ar: 'فشل الاتصال بخادم قاعدة البيانات. يرجى التحقق من اتصال الإنترنت الخاص بك.',
+            en: 'Failed to connect to the database server. Please check your internet connection.'
+          });
+        }
+      } finally {
+        setIsAuthLoading(false);
+      }
+    };
+
+    initializeAuth();
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
       setSession(session);
+      
+      if (event === 'SIGNED_OUT') {
+        // Clear any local state if needed
+        setResult(null);
+        setVideoResult(null);
+      }
+      
+      if (event === 'TOKEN_REFRESHED') {
+        console.log('Token refreshed successfully');
+      }
     });
 
     return () => subscription.unsubscribe();
@@ -906,6 +946,19 @@ IMPORTANT:
 
   return (
     <div className="min-h-screen bg-brand-dark text-white font-sans selection:bg-brand-cyan/30 overflow-x-hidden" dir="rtl">
+      {!isSupabaseConfigured && (
+        <div className="bg-red-500/10 border-b border-red-500/20 p-4 text-red-400 text-center font-medium">
+          <div className="max-w-5xl mx-auto flex items-center justify-center gap-3">
+            <AlertTriangle className="w-5 h-5" />
+            <DualText 
+              ar="تنبيه: إعدادات Supabase مفقودة. يرجى ضبط VITE_SUPABASE_URL و VITE_SUPABASE_ANON_KEY." 
+              en="Warning: Supabase configuration is missing. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY." 
+              arClass="text-sm"
+              enClass="text-xs opacity-80 block"
+            />
+          </div>
+        </div>
+      )}
       {!ai && (
         <div className="bg-amber-500/10 border-b border-amber-500/20 p-4 text-amber-400 text-center font-medium">
           <div className="max-w-5xl mx-auto flex items-center justify-center gap-3">
@@ -945,20 +998,29 @@ IMPORTANT:
 
       <main className="max-w-5xl mx-auto px-6 pt-12 pb-32 flex flex-col lg:flex-row gap-10">
         <div className="flex-1 space-y-8" id="capture-section">
-          <div className="relative w-full h-64 sm:h-80 rounded-3xl overflow-hidden shadow-lg mb-10">
-            <img 
-              src="https://images.unsplash.com/photo-1577803645773-f96470509666?auto=format&fit=crop&q=80&w=1200" 
-              alt="Stylish eyewear" 
-              className="w-full h-full object-cover"
-              referrerPolicy="no-referrer"
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-brand-dark/80 to-transparent flex items-end p-8">
-              <div className="text-white">
-                <h3 className="text-3xl font-bold mb-2">رؤية جديدة، أناقة فريدة</h3>
-                <p className="text-lg opacity-90 font-sans">A new vision, unique elegance</p>
+            <div className="relative w-full h-64 sm:h-80 rounded-3xl overflow-hidden shadow-lg mb-6">
+              <img 
+                src="https://images.unsplash.com/photo-1577803645773-f96470509666?auto=format&fit=crop&q=80&w=1200" 
+                alt="Stylish eyewear" 
+                className="w-full h-full object-cover"
+                referrerPolicy="no-referrer"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-brand-dark/80 to-transparent flex items-end p-8">
+                <div className="text-white">
+                  <h3 className="text-3xl font-bold mb-2">رؤية جديدة، أناقة فريدة</h3>
+                  <p className="text-lg opacity-90 font-sans">A new vision, unique elegance</p>
+                </div>
               </div>
             </div>
-          </div>
+
+            <div className="w-full rounded-3xl overflow-hidden shadow-2xl border border-brand-cyan/10 bg-brand-card aspect-video mb-10">
+              <iframe 
+                src="https://drive.google.com/file/d/1fNQfVnRtcsnDnYCG9RVgeFoI1xgj1yDB/preview" 
+                className="w-full h-full border-0" 
+                allow="autoplay"
+                title="Welcome Video"
+              ></iframe>
+            </div>
 
           <div>
             <h2 className="text-4xl font-black mb-4 text-white leading-tight uppercase tracking-tight">
